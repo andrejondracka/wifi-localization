@@ -11,7 +11,7 @@ valdata_loc_cs <- t(scale(t(valdata_loc)))
 valdata_loc_cs[is.nan(valdata_loc_cs)] = 0
 
 valdata_pcd <-valdata_loc_cs %*% pcatest$rotation
-valdata_pcd <- as.data.frame(valdata_pcd[,1:50])
+valdata_pcd <- as.data.frame(valdata_pcd[,1:100])
 
 ###train dataset model prediction
 
