@@ -1,5 +1,5 @@
-library(superheat)
 library(tidyverse)
+library(h2o)
 
 traindata <- read.csv(file = 'trainingData.csv')
 valdata <- read.csv('validationData.csv')
@@ -29,7 +29,7 @@ valdata_loc_cs[is.nan(valdata_loc_cs)] = 0
 
 ###pca and selectinbg the first 50 (changeable by changing numpc value) components
 pcatest <- prcomp(traindata_loc, center = F, scale. = F)
-numpc <- 20
+numpc <- 100 ###IMPORTANT PARMETER! DEFINES THE NUMBER OF PCs TO TAKE INTO ACCOUNT.
 
 traindata_pcd <- data.frame(pcatest$x[,1:numpc])
 
@@ -54,12 +54,15 @@ building_predicts <- as.data.frame(h2o_building_predicts)
 valdata$building_predicted <- building_predicts$predict
 valdata$building_predicted <- factor(valdata$building_predicted)
 
+
 ###split datasets, run models for each
 predictornames <- colnames(traindata_pcd[,1:numpc])
 
 traindata_pcd2 <- cbind(traindata_pcd, traindata[,521:529])
 valdata_pcd2 <- cbind(valdata_pcd, valdata[,521:530])
 
+train_bybuilding_list <- list()
+val_bybuilding_list <- list()
 
 for (i in unique(traindata_pcd2$BUILDINGID)){
   train_bybuilding_list[[i]] <- subset(traindata_pcd2, BUILDINGID == i)
@@ -85,16 +88,49 @@ h2o_gbm_fl_b2 <- h2o.gbm(x = predictornames, y = 'FLOOR', training_frame = h2o_t
 h2o_gbm_fl_b0 <- h2o.gbm(x = predictornames, y = 'FLOOR', training_frame = h2o_train_bybuilding_list$`0`, validation_frame = h2o_val_bybuilding_list$`0`)
 h2o_gbm_fl_b1 <- h2o.gbm(x = predictornames, y = 'FLOOR', training_frame = h2o_train_bybuilding_list$`1`, validation_frame = h2o_val_bybuilding_list$`1`)
 
+h2o_gbm_lon_b2 <- h2o.gbm(x = predictornames, y = 'LONGITUDE', training_frame = h2o_train_bybuilding_list$`2`, validation_frame = h2o_val_bybuilding_list$`2`)
+h2o_gbm_lon_b0 <- h2o.gbm(x = predictornames, y = 'LONGITUDE', training_frame = h2o_train_bybuilding_list$`0`, validation_frame = h2o_val_bybuilding_list$`0`)
+h2o_gbm_lon_b1 <- h2o.gbm(x = predictornames, y = 'LONGITUDE', training_frame = h2o_train_bybuilding_list$`1`, validation_frame = h2o_val_bybuilding_list$`1`)
+
+###make predicts
+h2o_val_bybuilding_list$`2`$lon_predict <- h2o.predict(h2o_gbm_lon_b2, h2o_val_bybuilding_list$`2`)
+h2o_val_bybuilding_list$`0`$lon_predict <- h2o.predict(h2o_gbm_lon_b0, h2o_val_bybuilding_list$`0`)
+h2o_val_bybuilding_list$`1`$lon_predict <- h2o.predict(h2o_gbm_lon_b1, h2o_val_bybuilding_list$`1`)
+
+h2o_val_bybuilding_list$`2`$lat_predict <- h2o.predict(h2o_gbm_lat_b2, h2o_val_bybuilding_list$`2`)
+h2o_val_bybuilding_list$`0`$lat_predict <- h2o.predict(h2o_gbm_lat_b0, h2o_val_bybuilding_list$`0`)
+h2o_val_bybuilding_list$`1`$lat_predict <- h2o.predict(h2o_gbm_lat_b1, h2o_val_bybuilding_list$`1`)
+
+h2o_val_bybuilding_list$`2`$floor_predict <- h2o.predict(h2o_gbm_fl_b2, h2o_val_bybuilding_list$`2`)$predict
+h2o_val_bybuilding_list$`0`$floor_predict <- h2o.predict(h2o_gbm_fl_b0, h2o_val_bybuilding_list$`0`)$predict
+h2o_val_bybuilding_list$`1`$floor_predict <- h2o.predict(h2o_gbm_fl_b1, h2o_val_bybuilding_list$`1`)$predict
+
+
+####error analysis
+valdata_finalpreds <- rbind(as.data.frame(h2o_val_bybuilding_list$`2`), as.data.frame(h2o_val_bybuilding_list$`1`), as.data.frame(h2o_val_bybuilding_list$`0`))
+
+valdata_finalpreds$err_floor <- abs(as.numeric(valdata_finalpreds$FLOOR) - as.numeric(valdata_finalpreds$floor_predict))
+valdata_finalpreds$err_building <- abs(as.numeric(levels(valdata_finalpreds$BUILDINGID))[valdata_finalpreds$BUILDINGID] 
+                                       - as.numeric(levels(valdata_finalpreds$building_predicted))[valdata_finalpreds$building_predicted])
+valdata_finalpreds$err_distance <- sqrt((valdata_finalpreds$LONGITUDE - valdata_finalpreds$lon_predict)^2 +
+                                          (valdata_finalpreds$LATITUDE - valdata_finalpreds$lat_predict)^2)
+
+valdata_finalpreds$err_total <- valdata_finalpreds$err_distance + 4*valdata_finalpreds$err_floor + 50*valdata_finalpreds$err_building
+
+summary(valdata_finalpreds$err_total)
 
 
 
 
 
-h2o_val_b2 <- h2o.predict(h2o_gbm_b2, h2o_val_bybuilding_list$`2`[,1:50])
 
-Metrics::rmse(valdata$LONGITUDE, as.vector(h2o_val_predicts$LONGITUDE))
-confusionMatrix(factor(valdata$FLOOR), h2o_val_predicts$FLOOR)
 
-plot(val_bybuilding_list$`2`$LATITUDE, as.vector(h2o_val_predicts$LATITUDE))
+
+# h2o_val_b2 <- h2o.predict(h2o_gbm_b2, h2o_val_bybuilding_list$`2`[,1:50])
+# 
+# Metrics::rmse(valdata$LONGITUDE, as.vector(h2o_val_predicts$LONGITUDE))
+# confusionMatrix(factor(valdata$FLOOR), h2o_val_predicts$FLOOR)
+# 
+# plot(val_bybuilding_list$`2`$LATITUDE, as.vector(h2o_val_predicts$LATITUDE))
 
 
