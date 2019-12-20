@@ -5,7 +5,7 @@ This repository includes R code for employing a machine learning model to solve 
 Briefly, the steps in the model include:
 1) PCA transformation of the data
 2) training a random forest model on the entire dataset to predict the building
-3) training model for predicting the floor, longitude and latitude using a gradient-boosted machine model.
+3) training models for predicting the floor, longitude and latitude using a gradient-boosted machine model.
 
 The script code_pca_bybuildingsplit.R trains the models on the provided training set, and applies validation on the provided validation set.
 The script code_fulldata_leaveoneout.R merges the datasets and trains the model on the entire set, with validation on a 3% of the data set as a hold-out test.
